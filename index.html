@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Gemini Megabonk - WebGPU Runner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --safe-top: env(safe-area-inset-top); }
+        body { margin: 0; overflow: hidden; background-color: #020205; font-family: sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
+        canvas { display: block; touch-action: none; }
+        
+        .bonk-text {
+            position: absolute;
+            pointer-events: none;
+            color: #fff;
+            font-weight: 900;
+            font-style: italic;
+            text-transform: uppercase;
+            text-shadow: 0 0 20px rgba(0,255,255,0.8);
+            animation: bonk-fly 0.5s ease-out forwards;
+            z-index: 50;
+        }
+
+        @keyframes bonk-fly {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -100%) scale(1.5); opacity: 1; }
+            100% { transform: translate(-50%, -150%) scale(1.2); opacity: 0; }
+        }
+
+        .shake-ui { animation: ui-shake 0.3s ease-in-out; }
+        @keyframes ui-shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-root" class="fixed inset-0 pointer-events-none z-10">
+        <!-- HUD -->
+        <div class="absolute inset-x-0 top-0 p-6 pt-[calc(1.5rem+var(--safe-top))] flex justify-between items-start">
+            <div class="flex flex-col">
+                <span class="text-[10px] text-cyan-400 font-bold tracking-widest uppercase opacity-70">Score</span>
+                <span id="score-display" class="text-4xl font-black text-white italic">00000</span>
+            </div>
+            <div class="flex flex-col items-end">
+                <span id="level-label" class="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">Phase 01</span>
+                <div class="w-24 h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden">
+                    <div id="xp-bar" class="h-full bg-cyan-500 w-0 transition-all duration-300"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="impact-container" class="absolute inset-0 flex items-center justify-center"></div>
+
+        <!-- Upgrade Menu -->
+        <div id="upgrade-screen" class="hidden pointer-events-auto absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-8">
+            <h1 class="text-3xl font-black text-white italic mb-8">LEVEL UP !</h1>
+            <div id="cards-container" class="flex flex-col gap-4 w-full max-w-sm"></div>
+        </div>
+
+        <!-- Game Over -->
+        <div id="death-screen" class="hidden pointer-events-auto absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center p-8 text-center">
+            <h1 class="text-6xl font-black text-white italic mb-8">BONKED.</h1>
+            <button onclick="location.reload()" class="px-10 py-4 bg-white text-black font-black rounded-xl text-xl">REESSAYER</button>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js",
+                "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.webgpu.js",
+                "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.tsl.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { WebGPURenderer } from 'three/webgpu';
+
+        class Game {
+            constructor() {
+                this.state = {
+                    running: false, lane: 0, score: 0, xp: 0, level: 1, 
+                    speed: 0.7, isHitstop: false, shake: 0
+                };
+                this.lanes = [-3.5, 0, 3.5];
+                this.obstacles = [];
+                this.init();
+            }
+
+            async init() {
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x020205);
+                this.scene.fog = new THREE.Fog(0x020205, 10, 50);
+
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.camera.position.set(0, 6, 10);
+                this.camera.lookAt(0, 2, 0);
+
+                this.renderer = new WebGPURenderer({ antialias: true });
+                await this.renderer.init();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.body.appendChild(this.renderer.domElement);
+
+                // Lights
+                this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+                const p = new THREE.PointLight(0x00ffff, 50, 50);
+                p.position.set(0, 10, 0);
+                this.scene.add(p);
+
+                // Player
+                this.player = new THREE.Mesh(
+                    new THREE.SphereGeometry(1.2, 32, 16),
+                    new THREE.MeshStandardMaterial({ color: 0x00ffcc, metalness: 0.8, roughness: 0.2 })
+                );
+                this.player.position.y = 1.2;
+                this.scene.add(this.player);
+
+                // World
+                this.world = new THREE.Group();
+                this.scene.add(this.world);
+                this.world.add(new THREE.GridHelper(400, 80, 0x112244, 0x050510));
+
+                for(let i=0; i<15; i++) this.spawn(-(i*20+30));
+
+                this.setupControls();
+                this.state.running = true;
+                this.animate();
+            }
+
+            spawn(z) {
+                const mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(2.5, 2.5, 2.5),
+                    new THREE.MeshStandardMaterial({ color: 0xff0044 })
+                );
+                mesh.position.set(this.lanes[Math.floor(Math.random()*3)], 1.25, z);
+                mesh.userData.active = true;
+                this.world.add(mesh);
+                this.obstacles.push(mesh);
+            }
+
+            setupControls() {
+                let startX = 0;
+                window.addEventListener('touchstart', e => startX = e.touches[0].clientX);
+                window.addEventListener('touchend', e => {
+                    const d = e.changedTouches[0].clientX - startX;
+                    if(Math.abs(d) > 40) {
+                        if(d > 0 && this.state.lane < 1) this.state.lane++;
+                        if(d < 0 && this.state.lane > -1) this.state.lane--;
+                    }
+                });
+            }
+
+            handleImpact(obj) {
+                obj.userData.active = false;
+                this.state.isHitstop = true;
+                this.state.shake = 0.6;
+                obj.scale.set(2, 0.1, 2);
+                
+                const div = document.createElement('div');
+                div.className = 'bonk-text text-5xl';
+                div.innerText = 'BONK!';
+                div.style.left = '50%'; div.style.top = '50%';
+                document.getElementById('impact-container').appendChild(div);
+                setTimeout(() => div.remove(), 500);
+
+                setTimeout(() => this.state.isHitstop = false, 120);
+                this.addXP(40);
+            }
+
+            addXP(v) {
+                this.state.xp += v;
+                if(this.state.xp >= 100) {
+                    this.state.xp = 0;
+                    this.levelUp();
+                }
+                document.getElementById('xp-bar').style.width = this.state.xp + '%';
+            }
+
+            levelUp() {
+                this.state.running = false;
+                this.state.level++;
+                document.getElementById('level-label').innerText = `Phase ${this.state.level}`;
+                const scr = document.getElementById('upgrade-screen');
+                const cont = document.getElementById('cards-container');
+                cont.innerHTML = '';
+                scr.classList.remove('hidden');
+
+                const up = [{n:'Turbo', f:()=>this.state.speed+=0.15}, {n:'Power', f:()=>{}}];
+                up.forEach(u => {
+                    const b = document.createElement('button');
+                    b.className = "bg-white/10 p-5 rounded-xl text-white font-bold";
+                    b.innerText = u.n;
+                    b.onclick = () => { u.f(); scr.classList.add('hidden'); this.state.running = true; };
+                    cont.appendChild(b);
+                });
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                if(!this.state.running || this.state.isHitstop) return;
+
+                this.world.position.z += this.state.speed;
+                this.player.position.x = THREE.MathUtils.lerp(this.player.position.x, this.lanes[this.state.lane+1], 0.2);
+                this.state.score += 1;
+                document.getElementById('score-display').innerText = String(this.state.score).padStart(5, '0');
+
+                this.obstacles.forEach(o => {
+                    const z = o.position.z + this.world.position.z;
+                    if(z > 8.5 && z < 10.5 && Math.abs(o.position.x - this.player.position.x) < 2 && o.userData.active) {
+                        this.handleImpact(o);
+                    }
+                    if(z > 20) {
+                        o.position.z -= 280; o.userData.active = true; o.scale.set(1,1,1);
+                    }
+                });
+
+                if(this.state.shake > 0) {
+                    this.camera.position.x = (Math.random()-0.5) * this.state.shake;
+                    this.state.shake *= 0.9;
+                }
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+        window.onload = () => new Game();
+    </script>
+</body>
+</html>
