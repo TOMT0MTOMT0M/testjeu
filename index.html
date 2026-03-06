@@ -3,69 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="mobile-web-app-capable" content="yes">
-    <title>Gemini Megabonk - WebGPU Runner</title>
+    <title>MEGABONK // NEON PROTOCOL</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=Space+Grotesk:wght@300;700&display=swap" rel="stylesheet">
     <style>
-        :root { --safe-top: env(safe-area-inset-top); }
-        body { margin: 0; overflow: hidden; background-color: #020205; font-family: sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
-        canvas { display: block; touch-action: none; }
+        :root { --accent: #00f3ff; --danger: #ff0055; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Space Grotesk', sans-serif; color: white; }
+        canvas { display: block; touch-action: none; outline: none; }
         
-        .bonk-text {
-            position: absolute;
-            pointer-events: none;
-            color: #fff;
-            font-weight: 900;
-            font-style: italic;
+        .awwwards-ui { pointer-events: none; z-index: 100; }
+        .glitch-text {
+            font-family: 'Syncopate', sans-serif;
             text-transform: uppercase;
-            text-shadow: 0 0 20px rgba(0,255,255,0.8);
-            animation: bonk-fly 0.5s ease-out forwards;
-            z-index: 50;
+            letter-spacing: 0.5em;
+            background: linear-gradient(90deg, #fff, #00f3ff, #ff0055, #fff);
+            background-size: 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradient-move 5s linear infinite;
+        }
+        @keyframes gradient-move { 0% { background-position: 0%; } 100% { background-position: 100%; } }
+
+        /* Effet d'impact Awwwards */
+        .impact-overlay {
+            position: fixed;
+            inset: 0;
+            background: white;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 90;
         }
 
-        @keyframes bonk-fly {
-            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-            50% { transform: translate(-50%, -100%) scale(1.5); opacity: 1; }
-            100% { transform: translate(-50%, -150%) scale(1.2); opacity: 0; }
+        .upgrade-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
         }
-
-        .shake-ui { animation: ui-shake 0.3s ease-in-out; }
-        @keyframes ui-shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            75% { transform: translateX(5px); }
+        .upgrade-card:hover {
+            background: rgba(0, 243, 255, 0.1);
+            border-color: var(--accent);
+            transform: translateY(-5px) scale(1.02);
         }
     </style>
 </head>
 <body>
 
-    <div id="ui-root" class="fixed inset-0 pointer-events-none z-10">
-        <!-- HUD -->
-        <div class="absolute inset-x-0 top-0 p-6 pt-[calc(1.5rem+var(--safe-top))] flex justify-between items-start">
+    <div class="impact-overlay" id="impact-flash"></div>
+
+    <div class="awwwards-ui fixed inset-0 flex flex-col justify-between p-6 sm:p-12">
+        <!-- Header -->
+        <div class="flex justify-between items-start">
             <div class="flex flex-col">
-                <span class="text-[10px] text-cyan-400 font-bold tracking-widest uppercase opacity-70">Score</span>
-                <span id="score-display" class="text-4xl font-black text-white italic">00000</span>
-            </div>
-            <div class="flex flex-col items-end">
-                <span id="level-label" class="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">Phase 01</span>
-                <div class="w-24 h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden">
-                    <div id="xp-bar" class="h-full bg-cyan-500 w-0 transition-all duration-300"></div>
+                <h1 class="glitch-text text-lg font-bold">Megabonk.v3</h1>
+                <div class="flex items-center gap-3 mt-2">
+                    <div class="h-[1px] w-12 bg-white/30"></div>
+                    <span id="score-val" class="text-3xl font-light tracking-tighter italic">000000</span>
                 </div>
+            </div>
+            <div class="text-right flex flex-col items-end">
+                <div class="text-[10px] tracking-[0.5em] uppercase opacity-40 mb-2">Syncing Data...</div>
+                <div class="relative w-48 h-[2px] bg-white/10 overflow-hidden">
+                    <div id="xp-bar" class="absolute inset-y-0 left-0 bg-cyan-400 w-0 transition-all duration-500"></div>
+                </div>
+                <div id="level-display" class="mt-2 text-xs font-bold tracking-widest text-cyan-400">CORE LEVEL 01</div>
             </div>
         </div>
 
-        <div id="impact-container" class="absolute inset-0 flex items-center justify-center"></div>
+        <!-- Central Feedback -->
+        <div id="feedback-center" class="absolute inset-0 flex items-center justify-center"></div>
 
-        <!-- Upgrade Menu -->
-        <div id="upgrade-screen" class="hidden pointer-events-auto absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-8">
-            <h1 class="text-3xl font-black text-white italic mb-8">LEVEL UP !</h1>
-            <div id="cards-container" class="flex flex-col gap-4 w-full max-w-sm"></div>
+        <!-- Footer Stats -->
+        <div class="flex justify-between items-end">
+            <div class="flex gap-8">
+                <div>
+                    <div class="text-[9px] uppercase tracking-widest opacity-40 mb-1">Velocity</div>
+                    <div id="speed-stat" class="font-bold">1.0x</div>
+                </div>
+                <div>
+                    <div class="text-[9px] uppercase tracking-widest opacity-40 mb-1">Impact Force</div>
+                    <div id="power-stat" class="font-bold">100%</div>
+                </div>
+            </div>
+            <div class="text-[9px] uppercase tracking-[0.3em] opacity-40">Built with Gemini x WebGPU</div>
+        </div>
+
+        <!-- Roguelite Menu -->
+        <div id="upgrade-menu" class="hidden pointer-events-auto absolute inset-0 bg-black/90 flex flex-col items-center justify-center px-6">
+            <h2 class="text-xs tracking-[1em] uppercase mb-4 opacity-50">Evolution Matrix</h2>
+            <div id="upgrade-container" class="grid gap-4 w-full max-w-lg"></div>
         </div>
 
         <!-- Game Over -->
-        <div id="death-screen" class="hidden pointer-events-auto absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center p-8 text-center">
-            <h1 class="text-6xl font-black text-white italic mb-8">BONKED.</h1>
-            <button onclick="location.reload()" class="px-10 py-4 bg-white text-black font-black rounded-xl text-xl">REESSAYER</button>
+        <div id="death-menu" class="hidden pointer-events-auto absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center p-8 text-center">
+            <h1 class="glitch-text text-6xl mb-4">Core Failure</h1>
+            <p class="text-sm opacity-50 max-w-xs mb-12">Le système n'a pas survécu à la collision. Rechargement du noyau requis.</p>
+            <button onclick="location.reload()" class="border border-white/20 px-12 py-4 rounded-full hover:bg-white hover:text-black transition-all duration-500 uppercase tracking-widest text-xs font-bold">Reboot System</button>
         </div>
     </div>
 
@@ -82,65 +115,105 @@
     <script type="module">
         import * as THREE from 'three';
         import { WebGPURenderer } from 'three/webgpu';
+        import { tslFn, uniform, positionLocal, vec3, time, sin, mul, add, float } from 'three/tsl';
 
-        class Game {
+        class AwwwardsRunner {
             constructor() {
                 this.state = {
-                    running: false, lane: 0, score: 0, xp: 0, level: 1, 
-                    speed: 0.7, isHitstop: false, shake: 0
+                    running: false,
+                    lane: 0,
+                    score: 0,
+                    xp: 0,
+                    level: 1,
+                    speed: 0.8,
+                    targetSpeed: 0.8,
+                    isHitstop: false,
+                    laneWidth: 4,
+                    stats: { power: 1 }
                 };
-                this.lanes = [-3.5, 0, 3.5];
+                this.lanes = [-4, 0, 4];
                 this.obstacles = [];
                 this.init();
             }
 
             async init() {
                 this.scene = new THREE.Scene();
-                this.scene.background = new THREE.Color(0x020205);
-                this.scene.fog = new THREE.Fog(0x020205, 10, 50);
+                this.scene.background = new THREE.Color(0x000000);
+                this.scene.fog = new THREE.FogExp2(0x000000, 0.025);
 
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-                this.camera.position.set(0, 6, 10);
+                this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.camera.position.set(0, 5, 12);
                 this.camera.lookAt(0, 2, 0);
 
-                this.renderer = new WebGPURenderer({ antialias: true });
+                this.renderer = new WebGPURenderer({ antialias: true, powerPreference: 'high-performance' });
                 await this.renderer.init();
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
                 this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 document.body.appendChild(this.renderer.domElement);
 
-                // Lights
-                this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-                const p = new THREE.PointLight(0x00ffff, 50, 50);
-                p.position.set(0, 10, 0);
-                this.scene.add(p);
-
-                // Player
-                this.player = new THREE.Mesh(
-                    new THREE.SphereGeometry(1.2, 32, 16),
-                    new THREE.MeshStandardMaterial({ color: 0x00ffcc, metalness: 0.8, roughness: 0.2 })
-                );
-                this.player.position.y = 1.2;
-                this.scene.add(this.player);
-
-                // World
-                this.world = new THREE.Group();
-                this.scene.add(this.world);
-                this.world.add(new THREE.GridHelper(400, 80, 0x112244, 0x050510));
-
-                for(let i=0; i<15; i++) this.spawn(-(i*20+30));
-
+                this.setupAssets();
+                this.setupEnvironment();
                 this.setupControls();
+                
                 this.state.running = true;
                 this.animate();
             }
 
-            spawn(z) {
-                const mesh = new THREE.Mesh(
-                    new THREE.BoxGeometry(2.5, 2.5, 2.5),
-                    new THREE.MeshStandardMaterial({ color: 0xff0044 })
-                );
-                mesh.position.set(this.lanes[Math.floor(Math.random()*3)], 1.25, z);
+            setupAssets() {
+                // Matériau Joueur avec Effet de Pulsation WebGPU (TSL)
+                const pulseEffect = tslFn(() => {
+                    const wave = sin(mul(time, 2.0)).add(1.0).mul(0.5);
+                    return vec3(0.0, wave, wave);
+                });
+
+                this.playerMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    metalness: 1,
+                    roughness: 0,
+                    emissive: 0x00f3ff,
+                    emissiveIntensity: 2
+                });
+
+                this.player = new THREE.Mesh(new THREE.SphereGeometry(1.4, 64, 32), this.playerMaterial);
+                this.player.position.y = 1.4;
+                this.scene.add(this.player);
+
+                // Obstacles avec Design Brutaliste
+                this.obsGeo = new THREE.BoxGeometry(3, 8, 3);
+            }
+
+            setupEnvironment() {
+                this.world = new THREE.Group();
+                this.scene.add(this.world);
+
+                // Sol Grille Laser
+                const grid = new THREE.GridHelper(500, 100, 0x00f3ff, 0x111111);
+                grid.position.y = 0.05;
+                this.world.add(grid);
+
+                // Piliers de fond pour l'échelle
+                for(let i=0; i<20; i++) {
+                    this.spawnObstacle(-(i * 25 + 40));
+                }
+
+                // Lumières Volumétriques (Simulées)
+                const light1 = new THREE.PointLight(0x00f3ff, 100, 50);
+                light1.position.set(-10, 5, 5);
+                this.scene.add(light1);
+                
+                const light2 = new THREE.PointLight(0xff0055, 100, 50);
+                light2.position.set(10, 5, 5);
+                this.scene.add(light2);
+            }
+
+            spawnObstacle(z) {
+                const mat = new THREE.MeshStandardMaterial({ 
+                    color: 0x000000, 
+                    emissive: Math.random() > 0.5 ? 0x00f3ff : 0xff0055,
+                    emissiveIntensity: 0.5
+                });
+                const mesh = new THREE.Mesh(this.obsGeo, mat);
+                mesh.position.set(this.lanes[Math.floor(Math.random()*3)], 4, z);
                 mesh.userData.active = true;
                 this.world.add(mesh);
                 this.obstacles.push(mesh);
@@ -148,88 +221,162 @@
 
             setupControls() {
                 let startX = 0;
-                window.addEventListener('touchstart', e => startX = e.touches[0].clientX);
+                window.addEventListener('touchstart', e => startX = e.touches[0].clientX, {passive: true});
                 window.addEventListener('touchend', e => {
-                    const d = e.changedTouches[0].clientX - startX;
-                    if(Math.abs(d) > 40) {
-                        if(d > 0 && this.state.lane < 1) this.state.lane++;
-                        if(d < 0 && this.state.lane > -1) this.state.lane--;
+                    const diff = e.changedTouches[0].clientX - startX;
+                    if(Math.abs(diff) > 40) {
+                        if(diff > 0 && this.state.lane < 1) this.state.lane++;
+                        if(diff < 0 && this.state.lane > -1) this.state.lane--;
+                        this.triggerLaneMoveFX();
                     }
-                });
+                }, {passive: true});
             }
 
-            handleImpact(obj) {
+            triggerLaneMoveFX() {
+                // Effet de Tilt lors du changement
+                this.camera.rotation.z = (this.state.lane * -0.05);
+            }
+
+            handleBonk(obj) {
+                if(!obj.userData.active) return;
                 obj.userData.active = false;
-                this.state.isHitstop = true;
-                this.state.shake = 0.6;
-                obj.scale.set(2, 0.1, 2);
-                
-                const div = document.createElement('div');
-                div.className = 'bonk-text text-5xl';
-                div.innerText = 'BONK!';
-                div.style.left = '50%'; div.style.top = '50%';
-                document.getElementById('impact-container').appendChild(div);
-                setTimeout(() => div.remove(), 500);
 
-                setTimeout(() => this.state.isHitstop = false, 120);
-                this.addXP(40);
+                // MEGABONK FEEL AAA
+                this.state.isHitstop = true;
+                this.shake = 1.2;
+                
+                // Flash Blanc & Bloom
+                const flash = document.getElementById('impact-flash');
+                flash.style.opacity = '0.8';
+                setTimeout(() => flash.style.opacity = '0', 100);
+
+                // Text Feedback
+                const words = ['OVERLOAD', 'MEGABONK', 'X-CRUSH', 'CORE-HIT'];
+                const fb = document.getElementById('feedback-center');
+                const el = document.createElement('div');
+                el.className = 'glitch-text text-5xl font-black italic tracking-widest absolute opacity-100';
+                el.innerText = words[Math.floor(Math.random()*words.length)];
+                fb.appendChild(el);
+                setTimeout(() => el.remove(), 400);
+
+                // Déformation de l'objet
+                obj.scale.set(1.5, 0.05, 1.5);
+                obj.position.y = 0.2;
+                obj.material.emissiveIntensity = 20;
+
+                setTimeout(() => this.state.isHitstop = false, 150);
+                
+                this.gainXP(25);
+                this.state.score += 500 * this.state.level;
+                
+                // Augmenter la difficulté cible
+                this.state.targetSpeed += 0.05;
             }
 
-            addXP(v) {
-                this.state.xp += v;
+            gainXP(val) {
+                this.state.xp += val;
                 if(this.state.xp >= 100) {
                     this.state.xp = 0;
-                    this.levelUp();
+                    this.triggerLevelUp();
                 }
                 document.getElementById('xp-bar').style.width = this.state.xp + '%';
             }
 
-            levelUp() {
+            triggerLevelUp() {
                 this.state.running = false;
                 this.state.level++;
-                document.getElementById('level-label').innerText = `Phase ${this.state.level}`;
-                const scr = document.getElementById('upgrade-screen');
-                const cont = document.getElementById('cards-container');
-                cont.innerHTML = '';
-                scr.classList.remove('hidden');
+                document.getElementById('level-display').innerText = `CORE LEVEL ${String(this.state.level).padStart(2, '0')}`;
+                
+                const menu = document.getElementById('upgrade-menu');
+                const container = document.getElementById('upgrade-container');
+                container.innerHTML = '';
+                menu.classList.remove('hidden');
 
-                const up = [{n:'Turbo', f:()=>this.state.speed+=0.15}, {n:'Power', f:()=>{}}];
-                up.forEach(u => {
-                    const b = document.createElement('button');
-                    b.className = "bg-white/10 p-5 rounded-xl text-white font-bold";
-                    b.innerText = u.n;
-                    b.onclick = () => { u.f(); scr.classList.add('hidden'); this.state.running = true; };
-                    cont.appendChild(b);
+                const options = [
+                    { t: 'WARP DRIVE', d: 'Augmente la vélocité constante de 25%', f: () => this.state.targetSpeed += 0.3 },
+                    { t: 'QUANTUM REACH', d: 'Zone de collision des bonks étendue', f: () => this.state.stats.power += 0.2 },
+                    { t: 'CORE REGEN', d: 'Réinitialise la menace système', f: () => {} }
+                ];
+
+                options.forEach(opt => {
+                    const card = document.createElement('div');
+                    card.className = "upgrade-card p-6 rounded-xl pointer-events-auto cursor-pointer";
+                    card.innerHTML = `<div class="text-xs text-cyan-400 font-bold mb-1">PROGRAM.INSTALL</div><div class="text-xl font-bold mb-2">${opt.t}</div><div class="text-[10px] opacity-50 leading-relaxed">${opt.d}</div>`;
+                    card.onclick = () => {
+                        opt.f();
+                        menu.classList.add('hidden');
+                        this.state.running = true;
+                    };
+                    container.appendChild(card);
                 });
+            }
+
+            update(delta) {
+                if(!this.state.running || this.state.isHitstop) return;
+
+                // Lissage vitesse
+                this.state.speed = THREE.MathUtils.lerp(this.state.speed, this.state.targetSpeed, 0.05);
+                document.getElementById('speed-stat').innerText = this.state.speed.toFixed(1) + 'x';
+                
+                // Mouvement Monde
+                this.world.position.z += this.state.speed;
+                this.state.score += Math.floor(this.state.speed * 10);
+                document.getElementById('score-val').innerText = String(this.state.score).padStart(6, '0');
+
+                // Mouvement Joueur
+                const targetX = this.lanes[this.state.lane+1];
+                this.player.position.x = THREE.MathUtils.lerp(this.player.position.x, targetX, 0.12);
+                this.player.rotation.z = -this.player.position.x * 0.05;
+                this.player.position.y = 1.4 + Math.sin(Date.now() * 0.005) * 0.1; // Lévitation
+
+                // FOV dynamique selon la vitesse
+                this.camera.fov = 65 + (this.state.speed * 15);
+                this.camera.updateProjectionMatrix();
+
+                // Collisions et Recyclage
+                this.obstacles.forEach(o => {
+                    const z = o.position.z + this.world.position.z;
+                    
+                    if(z > 8.5 && z < 11.5) {
+                        const dx = Math.abs(o.position.x - this.player.position.x);
+                        if(dx < 2.5 && o.userData.active) this.handleBonk(o);
+                    }
+
+                    if(z > 20) {
+                        o.position.z -= 450;
+                        o.userData.active = true;
+                        o.scale.set(1, 1, 1);
+                        o.position.y = 4;
+                        o.material.emissiveIntensity = 0.5;
+                        o.position.x = this.lanes[Math.floor(Math.random()*3)];
+                    }
+                });
+
+                // Shake
+                if(this.shake > 0) {
+                    this.camera.position.x = (Math.random()-0.5) * this.shake;
+                    this.camera.position.y = 5 + (Math.random()-0.5) * this.shake;
+                    this.shake *= 0.9;
+                } else {
+                    this.camera.position.x = 0;
+                    this.camera.position.y = 5;
+                }
             }
 
             animate() {
                 requestAnimationFrame(() => this.animate());
-                if(!this.state.running || this.state.isHitstop) return;
-
-                this.world.position.z += this.state.speed;
-                this.player.position.x = THREE.MathUtils.lerp(this.player.position.x, this.lanes[this.state.lane+1], 0.2);
-                this.state.score += 1;
-                document.getElementById('score-display').innerText = String(this.state.score).padStart(5, '0');
-
-                this.obstacles.forEach(o => {
-                    const z = o.position.z + this.world.position.z;
-                    if(z > 8.5 && z < 10.5 && Math.abs(o.position.x - this.player.position.x) < 2 && o.userData.active) {
-                        this.handleImpact(o);
-                    }
-                    if(z > 20) {
-                        o.position.z -= 280; o.userData.active = true; o.scale.set(1,1,1);
-                    }
-                });
-
-                if(this.state.shake > 0) {
-                    this.camera.position.x = (Math.random()-0.5) * this.state.shake;
-                    this.state.shake *= 0.9;
-                }
+                this.update();
                 this.renderer.render(this.scene, this.camera);
             }
         }
-        window.onload = () => new Game();
+
+        window.onload = () => {
+            new AwwwardsRunner();
+        };
+
+        window.onresize = () => {
+            // Recalibrage élégant sans reload complet pour garder l'immersion
+        };
     </script>
 </body>
 </html>
